@@ -5,8 +5,10 @@ import cv2
 import json
 import numpy as np
 from tqdm import tqdm
-
+import torch
 from matplotlib import pyplot as plt
+import time
+import gc
 
 from calibration_data import CameraCalibration
 from video_processing import VideoProcessor, DetectionProcessor
@@ -222,23 +224,30 @@ def validate_mesh(vertices, faces):
     # print("Mesh is valid.")
     return True
 
-import pprint
-pprint = pprint.PrettyPrinter(indent=4).pprint
-# Processing Loop
-for frame in range(total_frames):
+print(f"Allocated memory: {torch.cuda.memory_allocated()}")
+print(f"Reserved memory: {torch.cuda.memory_reserved()}")
+print(f"Max memory: {torch.cuda.max_memory_allocated()}")
 
-    if frame != 1000 and frame != 1001 and frame != 1002:
-        continue
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+os.environ['TORCH_USE_CUDA_DSA'] = '1'
+
+# Processing Loop
+for frame in range(1000, 1056, 8):
+
+    torch.cuda.empty_cache()
+    gc.collect()
     
-    import time
     start = time.time()
     detections = detection_processor.process_current_frame_from_all_cameras(frame_number=frame)
     end = time.time()
-    pprint(f"BBox detection took {end - start} seconds")
+    print(f"BBox detection took {end - start} seconds")
 
     if detections is None:
         print("Detections is empty")
         continue
+
+    torch.cuda.empty_cache()
+    gc.collect()
     
     start = time.time()
 
@@ -266,10 +275,9 @@ for frame in range(total_frames):
             
             bbox = det['bbox']
             frustum_vertices = frustum_projection.bbox_to_frustum(bbox)
-            print(f"Frame: {frame}")
             frame_dir = os.makedirs(f"output/{frame}", exist_ok=True)
+            frame_dir = f"output/{frame}"
             current_mesh_path = f"{frame_dir}/frustum_camera_{camera}_frame_{frame}.ply"
-            print(f"CMesh path: {current_mesh_path}")
             mesh.add_frustum(frustum_vertices, current_mesh_path)
 
             current_mesh = Mesh()
@@ -290,11 +298,11 @@ for frame in range(total_frames):
 
             save_mesh_to_file(current_mesh.vertices, current_mesh.faces, current_mesh_path)
 
-    pprint(f"Computing all meshes for frame: {frame} took: {time.time() - start} seconds")
+    print(f"Computing all meshes for frame: {frame} took: {time.time() - start} seconds")
     start = time.time()
     intersection = mesh.intersect_meshes()
     end = time.time()
-    pprint(f"Intersection took {end - start} seconds")
+    print(f"Intersection took {end - start} seconds\n")
     
     if intersection is not None:
         save_mesh_to_file(intersection.vertices, intersection.faces, f"intersection_frame_{frame}.ply")
