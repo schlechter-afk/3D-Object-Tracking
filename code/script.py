@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 
 from calibration_data import CameraCalibration
 from video_processing import VideoProcessor, DetectionProcessor
+# from multiproc_video_proc import VideoProcessor, DetectionProcessor
 from object_detection import YOLODetector
 
 DATASET_DIR = '../150821_dance3/'
@@ -261,7 +262,8 @@ for frame in range(total_frames):
             
             bbox = det['bbox']
             frustum_vertices = frustum_projection.bbox_to_frustum(bbox)
-            current_mesh_path = f"frustum_camera_{camera}_frame_{frame}.ply"
+            frame_dir = os.makedirs(f"output/{frame}", exist_ok=True)
+            current_mesh_path = f"{frame_dir}/frustum_camera_{camera}_frame_{frame}.ply"
 
             mesh.add_frustum(frustum_vertices, current_mesh_path)
 
