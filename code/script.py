@@ -25,6 +25,10 @@ calib = CameraCalibration(calib_file)
 video_processor = VideoProcessor(video_dir)
 yolo_detector = YOLODetector(yolo_model_path)
 
+print(f"GPU available: {torch.cuda.is_available()}")
+
+print(f"Device of yolo_detector: {yolo_detector.device}")
+
 detection_processor = DetectionProcessor(video_processor, yolo_detector)
 
 with open(calib_file, 'r') as f:
@@ -262,9 +266,10 @@ for frame in range(total_frames):
             
             bbox = det['bbox']
             frustum_vertices = frustum_projection.bbox_to_frustum(bbox)
+            print(f"Frame: {frame}")
             frame_dir = os.makedirs(f"output/{frame}", exist_ok=True)
             current_mesh_path = f"{frame_dir}/frustum_camera_{camera}_frame_{frame}.ply"
-
+            print(f"CMesh path: {current_mesh_path}")
             mesh.add_frustum(frustum_vertices, current_mesh_path)
 
             current_mesh = Mesh()
