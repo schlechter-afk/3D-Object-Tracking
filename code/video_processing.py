@@ -8,6 +8,7 @@ class VideoProcessor:
         self.video_dir = video_dir
         self.videos = self._load_videos()
 
+
     def _load_videos(self):
         videos = {}
         sorted_files = sorted(os.listdir(self.video_dir))
@@ -17,6 +18,7 @@ class VideoProcessor:
                 videos[camera_name] = cv2.VideoCapture(os.path.join(self.video_dir, filename))
         return videos
 
+
     def get_frame(self, camera_name, frame_number):
         cap = self.videos.get(camera_name)
         if not cap:
@@ -25,9 +27,11 @@ class VideoProcessor:
         ret, frame = cap.read()
         return frame if ret else None
 
+
     def release(self):
         for cap in self.videos.values():
             cap.release()
+
 
 class DetectionProcessor:
     def __init__(self, video_processor, yolo_detector):
@@ -43,26 +47,3 @@ class DetectionProcessor:
                 break
             detections[camera_name] = self.yolo_detector.detect_objects(frame)
         return detections
-
-    def process_all_frames(self):
-        detections_per_frame = {}
-        for camera_name in self.video_processor.videos.keys():
-            frame_number = 0
-            total_frames = int(self.video_processor.videos[camera_name].get(cv2.CAP_PROP_FRAME_COUNT))
-            # total_frames = 1000
-            with tqdm(total=total_frames, desc=f"Processing Camera {camera_name}") as pbar:
-                while frame_number < total_frames:
-                    frame = self.video_processor.get_frame(camera_name, frame_number)
-                    if frame is None:
-                        break
-                    detections = self.yolo_detector.detect_objects(frame)
-                    if frame_number not in detections_per_frame:
-                        detections_per_frame[frame_number] = []
-                    detections_per_frame[frame_number].append({
-                        'camera_name': camera_name,
-                        'detections': detections
-                    })
-                    frame_number += 1
-                    pbar.update(1)
-
-        return detections_per_frame

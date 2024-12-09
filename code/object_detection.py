@@ -2,13 +2,14 @@ import cv2
 from ultralytics import YOLO
 import torch
 
+
 class YOLODetector:
     def __init__(self, yolo_model_path):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = YOLO(yolo_model_path)
 
-    def detect_objects(self, frame):
 
+    def detect_objects(self, frame):
         with torch.no_grad():
             # self.model = self.model.to(self.device)
             self.model = self.model.cuda()
