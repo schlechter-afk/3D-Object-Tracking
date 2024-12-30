@@ -25,6 +25,7 @@ class VideoProcessor:
             raise ValueError(f"Camera {camera_name} not found in video directory.")
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
         ret, frame = cap.read()
+        # TODO: Undistort the frame using old K and new K
         return frame if ret else None
 
 

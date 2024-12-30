@@ -10,7 +10,7 @@ from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 
 class DenseObjectReconstructor:
-    def __init__(self, voxel_resolution=64):
+    def __init__(self, voxel_resolution=512):
         """
         Initialize the dense object reconstructor
         Args:
@@ -35,14 +35,24 @@ class DenseObjectReconstructor:
         xx, yy, zz = np.meshgrid(x, y, z)
         voxel_centers = np.stack([xx.flatten(), yy.flatten(), zz.flatten()], axis=1)
 
+        self.voxel_size = (
+            (self.max_coords[0] - self.min_coords[0]) / self.voxel_resolution,
+            (self.max_coords[1] - self.min_coords[1]) / self.voxel_resolution,
+            (self.max_coords[2] - self.min_coords[2]) / self.voxel_resolution
+        )
+
         return voxel_centers
 
 
     def project_points(self, points_3d, K, R, t):
-        """Project 3D points using pinhole camera model"""
+        """
+        Project 3D points using pinhole camera model
+        TODO: Check cv2.projectPoints for better performance
+        """
         points_homog = np.hstack((points_3d, np.ones((points_3d.shape[0], 1))))
 
         RT = np.hstack((R, t.reshape(3,1)))
+        # TODO: Check w2c vs c2w -> inverse of RT matrix after homogeneous transformation.
 
         proj_points = K @ RT @ points_homog.T
 
@@ -110,6 +120,7 @@ class DenseObjectReconstructor:
 
             voxel_occupancy[valid_points] &= combined_mask[points_valid[:, 1], points_valid[:, 0]]
 
+        print(voxel_centers[voxel_occupancy])
         mesh = trimesh.voxel.ops.points_to_marching_cubes(voxel_centers[voxel_occupancy], 
                                                           pitch=self.voxel_size
                                                         )

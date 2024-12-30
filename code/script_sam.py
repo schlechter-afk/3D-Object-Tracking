@@ -328,6 +328,9 @@ for frame in range(1000, 1056, 8):
         [xmax, ymax, zmin], [xmax, ymax, zmax]
     ])
 
+    # print("Creating 3D Bounding Box")
+    # print(bbox_vertices)
+
     threeDimensionalBBoxMesh = trimesh.Trimesh(
         vertices=bbox_vertices,
         faces=[[0,1,2], [1,2,3], [2,3,7], [2,6,7], [0,2,6], [0,4,6],
@@ -346,7 +349,10 @@ for frame in range(1000, 1056, 8):
 
     print("Saving mesh to file")
 
-    mesh.export(f"correct_dense_mesh_frame_{frame}.ply")
+    mesh.export(f"highest_correct_dense_mesh_frame_{frame}.ply")
 
+    # TODO: Project mesh vertics onto a image from a particular view and see if they coincide
+    # TODO: Overlay the occupied voxels on the 2D Image and see if the person is correctly segmented
+    
     if frame > 1008:
         break
