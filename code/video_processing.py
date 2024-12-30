@@ -4,9 +4,20 @@ import numpy as np
 from tqdm import tqdm
 
 class VideoProcessor:
-    def __init__(self, video_dir):
+    def __init__(self, video_dir, camera_calibration):
         self.video_dir = video_dir
+        self.calib = camera_calibration
         self.videos = self._load_videos()
+
+        # Pre-load camera intrinsics and distortion for each camera
+        self.camera_params = {}
+        for camera_name in self.videos.keys():
+            try:
+                K, R, t, distCoeffs = self.calib.get_camera_params(camera_name)
+                self.camera_params[camera_name] = (K, R, t, distCoeffs)
+            except ValueError:
+                print(f"Warning: {camera_name} not found in calibration data.")
+                self.camera_params[camera_name] = None
 
 
     def _load_videos(self):
@@ -25,8 +36,23 @@ class VideoProcessor:
             raise ValueError(f"Camera {camera_name} not found in video directory.")
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
         ret, frame = cap.read()
-        # TODO: Undistort the frame using old K and new K
-        return frame if ret else None
+        if not ret:
+            print(f"Frame {frame_number} not found in camera {camera_name}.")
+            return None
+        
+        camera_data = self.camera_params.get(camera_name, None)
+        if camera_data is None:
+            return frame
+        
+        K, R, t, distCoeffs = camera_data
+        if K is None or R is None or t is None or distCoeffs is None:
+            return frame
+
+        h, w = frame.shape[:2]
+
+        new_K, _ = cv2.getOptimalNewCameraMatrix(K, distCoeffs, (w, h), 1, (w, h))
+        frame = cv2.undistort(frame, K, distCoeffs, None, new_K)
+        return frame
 
 
     def release(self):

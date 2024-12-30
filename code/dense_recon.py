@@ -4,13 +4,14 @@ import trimesh
 import numpy as np
 import torch
 import sys
-
+import cv2
+from tqdm import tqdm
 sys.path.append('/data/swayam/pose_tracking/sam2')
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 
 class DenseObjectReconstructor:
-    def __init__(self, voxel_resolution=512):
+    def __init__(self, voxel_resolution=256):
         """
         Initialize the dense object reconstructor
         Args:
@@ -44,20 +45,33 @@ class DenseObjectReconstructor:
         return voxel_centers
 
 
-    def project_points(self, points_3d, K, R, t):
+    # def project_points(self, points_3d, K, R, t):
+    #     """
+    #     Project 3D points using pinhole camera model
+    #     TODO: Check cv2.projectPoints for better performance
+    #     """
+    #     points_homog = np.hstack((points_3d, np.ones((points_3d.shape[0], 1))))
+
+    #     RT = np.hstack((R, t.reshape(3,1)))
+    #     # TODO: Check w2c vs c2w -> inverse of RT matrix after homogeneous transformation.
+    #     # Update: RT is from w2c, so no need to invert it.
+    #     proj_points = K @ RT @ points_homog.T
+
+    #     proj_points = proj_points / proj_points[2]
+    #     return proj_points[:2].T
+
+    def project_points(self, points_3d, K, R, t, distCoeffs):
         """
-        Project 3D points using pinhole camera model
-        TODO: Check cv2.projectPoints for better performance
+        Use OpenCV's projectPoints to handle distortion directly.
         """
-        points_homog = np.hstack((points_3d, np.ones((points_3d.shape[0], 1))))
-
-        RT = np.hstack((R, t.reshape(3,1)))
-        # TODO: Check w2c vs c2w -> inverse of RT matrix after homogeneous transformation.
-
-        proj_points = K @ RT @ points_homog.T
-
-        proj_points = proj_points / proj_points[2]
-        return proj_points[:2].T
+        rvec, _ = cv2.Rodrigues(R)
+        
+        # points_3d = points_3d.reshape((-1, 1, 3)).astype(np.float32)
+        
+        projected_points, _ = cv2.projectPoints(
+            points_3d, rvec, t, K, distCoeffs
+        )
+        return projected_points.reshape(-1, 2)
 
 
     def get_sam_mask(self, image, bbox):
@@ -82,28 +96,36 @@ class DenseObjectReconstructor:
     def carve_space(self, voxel_centers, video_processor, calib_data, frame_number, detections):
         """Perform space carving using all available views"""
         voxel_occupancy = np.ones(len(voxel_centers), dtype=bool)
-        
-        for camera_name in video_processor.videos.keys():
+        tqdm_bar = tqdm(video_processor.videos.keys(), desc="Carving space")
+
+        print(f"Lenght of voxel_centers: {len(voxel_centers)}")
+
+        for camera_name in tqdm_bar:
             camera_params = next((c for c in calib_data['cameras'] if c['name'] == camera_name), None)
             
             if camera_params is None:
+                print(f"Warning: {camera_name} not found in calibration data.")
                 continue
                 
             frame = video_processor.get_frame(camera_name, frame_number)
             if frame is None:
+                print(f"Frame {frame_number} not found in camera {camera_name}.")
                 continue
 
             K = np.array(camera_params['K'])
             R = np.array(camera_params['R'])
             t = np.array(camera_params['t'])
+            distCoeffs = np.array(camera_params['distCoef'])
 
-            proj_points = self.project_points(voxel_centers, K, R, t)
+            proj_points = self.project_points(voxel_centers, K, R, t, distCoeffs)
 
             if camera_name not in detections or not detections[camera_name]:
+                print(f"No detections found for camera {camera_name}.")
                 continue
 
             person_detections = [det for det in detections[camera_name] if det['class_id'] == 0]
             if not person_detections:
+                print(f"No person detections found for camera {camera_name}.")
                 continue
 
             combined_mask = np.zeros(frame.shape[:2], dtype=bool)
@@ -117,8 +139,13 @@ class DenseObjectReconstructor:
                          (proj_points[:, 1] >= 0) & (proj_points[:, 1] < frame.shape[0])
 
             points_valid = proj_points[valid_points].astype(int)
-
             voxel_occupancy[valid_points] &= combined_mask[points_valid[:, 1], points_valid[:, 0]]
+
+            mask_occup = combined_mask[points_valid[:, 1], points_valid[:, 0]]
+            print(f"Mask Occupancy: {np.sum(mask_occup)}")
+            print(f"Occupancy: {np.sum(voxel_occupancy)}")
+
+        print(voxel_centers)
 
         print(voxel_centers[voxel_occupancy])
         mesh = trimesh.voxel.ops.points_to_marching_cubes(voxel_centers[voxel_occupancy], 

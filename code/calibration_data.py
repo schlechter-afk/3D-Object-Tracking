@@ -21,5 +21,5 @@ class CameraCalibration:
         K = np.array(camera['K'])
         R = np.array(camera['R'])
         t = np.array(camera['t']).flatten()
-        # TODO: Undistort the camera
-        return K, R, t
+        distCoeffs = np.array(camera['distCoef'])
+        return K, R, t, distCoeffs

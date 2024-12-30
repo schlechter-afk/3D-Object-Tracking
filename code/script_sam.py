@@ -26,7 +26,7 @@ video_dir = os.path.join(DATASET_DIR, 'hdVideos')
 yolo_model_path = 'yolov5nu.pt'
 
 calib = CameraCalibration(calib_file)
-video_processor = VideoProcessor(video_dir)
+video_processor = VideoProcessor(video_dir, calib)
 yolo_detector = YOLODetector(yolo_model_path)
 dense_reconstructor = DenseObjectReconstructor()
 
@@ -36,17 +36,34 @@ with open(calib_file, 'r') as f:
     calib_data = json.load(f)
 
 class FrustumProjection:
-    def __init__(self, K, R, t):
+    def __init__(self, K, R, t, distCoeffs, H, W):
         """
         Initializes the FrustumProjection class with camera intrinsic and extrinsic parameters.
         K: Intrinsic matrix (3x3)
         R: Rotation matrix (3x3)
         t: Translation vector (3x1)
+        distCoeffs: Distortion coefficients (5,)
+        H: Image height
+        W: Image width
         """
-        self.K = np.array(K)  # (3, 3)
+        self.distorted_K = np.array(K)  # (3, 3)
         self.R = np.array(R)  # (3, 3)
         self.t = np.array(t)  # (3, 1)
-        self.inv_K = np.linalg.inv(self.K) 
+        self.distCoeffs = np.array(distCoeffs)  # (5,)
+        self.H = H
+        self.W = W
+        self.K = self.fix_distortion()
+
+
+    def fix_distortion(self):
+        """
+        Fixes the distortion in the camera matrix.
+        """
+        new_K, _ = cv2.getOptimalNewCameraMatrix(
+            self.distorted_K, self.distCoeffs, (self.W, self.H), 1, (self.W, self.H)
+        )
+        return new_K
+       
     
     def backproject(self, x, y, depth, K, R, t):
         """
@@ -263,8 +280,11 @@ for frame in range(1000, 1056, 8):
         K = camera_params['K']
         R = camera_params['R']
         t = camera_params['t']
+        distCoeffs = camera_params['distCoef']
+        W, H = camera_params['resolution']
+        assert W == 1920 and H == 1080, "Resolution is not 1920x1080"
 
-        frustum_projection = FrustumProjection(K, R, t)
+        frustum_projection = FrustumProjection(K, R, t, distCoeffs, H, W)
 
         for det in detections[camera]:
             if not det:
@@ -304,7 +324,7 @@ for frame in range(1000, 1056, 8):
     print(f"Intersection took {end - start} seconds\n")
     
     if intersection is not None:
-        save_mesh_to_file(intersection.vertices, intersection.faces, f"intersection_frame_{frame}.ply")
+        save_mesh_to_file(intersection.vertices, intersection.faces, f"v256_intersection_frame_{frame}.ply")
     else:
         print("Intersection could not be computed.")
 
@@ -337,22 +357,26 @@ for frame in range(1000, 1056, 8):
               [0,1,5], [0,4,5], [4,5,7], [5,6,7], [1,5,7], [1,3,7]]
     )
 
-    threeDimensionalBBoxMesh.export(f"3D_BBox_frame_{frame}.ply")
+    threeDimensionalBBoxMesh.export(f"v256_3D_BBox_frame_{frame}.ply")
 
-    print("Creating Voxel grid")
+    start = time.time()
 
     voxel_centers = dense_reconstructor.create_voxel_grid(bbox_vertices)
 
-    print("Performing space carving")
+    print(f"Creating voxel grid took {time.time() - start} seconds")
+
+    start = time.time()
 
     occupied_voxels, _, mesh = dense_reconstructor.carve_space(voxel_centers, video_processor, calib_data, frame, detections)
 
+    print(f"Carving space took {time.time() - start} seconds")
+
     print("Saving mesh to file")
 
-    mesh.export(f"highest_correct_dense_mesh_frame_{frame}.ply")
+    mesh.export(f"v256_highest_correct_dense_mesh_frame_{frame}.ply")
 
     # TODO: Project mesh vertics onto a image from a particular view and see if they coincide
     # TODO: Overlay the occupied voxels on the 2D Image and see if the person is correctly segmented
     
-    if frame > 1008:
+    if frame == 1000:
         break
